@@ -1,104 +1,175 @@
-import cv2
 import numpy as np
+import cv2
+from collections import deque
 
-# Video capture object
-vid = cv2.VideoCapture(0)
-vid.set(3,1280)
-vid.set(3,450)
+#default called trackbar function 
+def setValues(x):
+   print("")
 
-# Threshold values tuned according to the background and colour of drawing object chosen
-# Here I have chosen a blue bottle cap and these values are taken from the internet but one can tune according to their background
-lower_range = np.array([110, 110, 50])
-upper_range = np.array([150,255,255])
 
-# For reducing the noise, we create a kernel
-kernel = np.ones((9,9),np.uint8)
+# Creating the trackbars needed for adjusting the marker colour
+cv2.namedWindow("Color detectors")
+cv2.createTrackbar("Upper Hue", "Color detectors", 153, 180,setValues)
+cv2.createTrackbar("Upper Saturation", "Color detectors", 255, 255,setValues)
+cv2.createTrackbar("Upper Value", "Color detectors", 255, 255,setValues)
+cv2.createTrackbar("Lower Hue", "Color detectors", 64, 180,setValues)
+cv2.createTrackbar("Lower Saturation", "Color detectors", 72, 255,setValues)
+cv2.createTrackbar("Lower Value", "Color detectors", 49, 255,setValues)
 
-# This threshold is used to filter noise, the contour area must be bigger than this to qualify as an actual contour.
-noiseth = 200
-x1 = 0
-y1 = 0
-canvas = None
 
-while(True):
+# Giving different arrays to handle colour points of different colour
+bpoints = [deque(maxlen=1024)]
+gpoints = [deque(maxlen=1024)]
+rpoints = [deque(maxlen=1024)]
+ypoints = [deque(maxlen=1024)]
 
-    # Capture the video frame by frame
-    ret, frame = vid.read()
+# These indexes will be used to mark the points in particular arrays of specific colour
+blue_index = 0
+green_index = 0
+red_index = 0
+yellow_index = 0
 
-    # To flip the frame horizontally(This is to be done if ur webcam gives u inverted image)
+#The kernel to be used for dilation purpose 
+kernel = np.ones((5,5),np.uint8)
+
+colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255)]
+colorIndex = 0
+
+# Here is code for Canvas setup
+paintWindow = np.zeros((471,636,3)) + 255
+paintWindow = cv2.rectangle(paintWindow, (40,1), (140,65), (0,0,0), 2)
+paintWindow = cv2.rectangle(paintWindow, (160,1), (255,65), colors[0], -1)
+paintWindow = cv2.rectangle(paintWindow, (275,1), (370,65), colors[1], -1)
+paintWindow = cv2.rectangle(paintWindow, (390,1), (485,65), colors[2], -1)
+paintWindow = cv2.rectangle(paintWindow, (505,1), (600,65), colors[3], -1)
+
+cv2.putText(paintWindow, "CLEAR", (49, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2, cv2.LINE_AA)
+cv2.putText(paintWindow, "BLUE", (185, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+cv2.putText(paintWindow, "GREEN", (298, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+cv2.putText(paintWindow, "RED", (420, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+cv2.putText(paintWindow, "YELLOW", (520, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150,150,150), 2, cv2.LINE_AA)
+cv2.namedWindow('Paint', cv2.WINDOW_AUTOSIZE)
+
+
+# Loading the default webcam of PC.
+cap = cv2.VideoCapture(0)
+
+# Keep looping
+while True:
+    # Reading the frame from the camera
+    ret, frame = cap.read()
+    #Flipping the frame to see same side of yours
     frame = cv2.flip(frame, 1)
-
-    # Initialize the canvas as a black image of the same size as the frame.
-    if canvas is None:
-        canvas = np.zeros_like(frame)
-
-    # RGB to HSV .
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # Filter the image and get the binary mask
-    mask = cv2.inRange(hsv, lower_range, upper_range)
 
-    # Perform the morphological operations to get rid of the noise.
-    # Erosion removes the white part while dilation expands it.
-    mask = cv2.erode(mask, kernel, iterations=1)
-    mask = cv2.dilate(mask, kernel, iterations=2)
+    u_hue = cv2.getTrackbarPos("Upper Hue", "Color detectors")
+    u_saturation = cv2.getTrackbarPos("Upper Saturation", "Color detectors")
+    u_value = cv2.getTrackbarPos("Upper Value", "Color detectors")
+    l_hue = cv2.getTrackbarPos("Lower Hue", "Color detectors")
+    l_saturation = cv2.getTrackbarPos("Lower Saturation", "Color detectors")
+    l_value = cv2.getTrackbarPos("Lower Value", "Color detectors")
+    Upper_hsv = np.array([u_hue,u_saturation,u_value])
+    Lower_hsv = np.array([l_hue,l_saturation,l_value])
 
-    # Find Contours in the frame.
-    _, contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-    # To make sure there is a contour present and its size is bigger than noise threshold.
-    if contours and cv2.contourArea(max(contours,key = cv2.contourArea)) > noiseth:
 
-        # Selecting the biggest contour with respect to area
-        c = max(contours, key=cv2.contourArea)
+    # Adding the colour buttons to the live frame for colour access
+    frame = cv2.rectangle(frame, (40,1), (140,65), (122,122,122), -1)
+    frame = cv2.rectangle(frame, (160,1), (255,65), colors[0], -1)
+    frame = cv2.rectangle(frame, (275,1), (370,65), colors[1], -1)
+    frame = cv2.rectangle(frame, (390,1), (485,65), colors[2], -1)
+    frame = cv2.rectangle(frame, (505,1), (600,65), colors[3], -1)
+    cv2.putText(frame, "CLEAR ALL", (49, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, "BLUE", (185, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, "GREEN", (298, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, "RED", (420, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, "YELLOW", (520, 33), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150,150,150), 2, cv2.LINE_AA)
 
-        # Getting bounding box coordinates around that contour
-        x, y, w, h = cv2.boundingRect(c)
 
-        # Draw that bounding box
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
+    # Identifying the pointer by making its mask
+    Mask = cv2.inRange(hsv, Lower_hsv, Upper_hsv)
+    Mask = cv2.erode(Mask, kernel, iterations=1)
+    Mask = cv2.morphologyEx(Mask, cv2.MORPH_OPEN, kernel)
+    Mask = cv2.dilate(Mask, kernel, iterations=1)
 
-        # If there were no previous points then save the detected x2,y2
-        # coordinates as x1,y1.
-        # This is true when we writing for the first time or when writing
-        # again when the pen had disappeared from view.
-        if x1 == 0 and y1 == 0:
-            x1, y1 = x, y
-        else:
-            # Draw the line on the canvas
-            # To draw from the centroid of the bounding box
+    # Find contours for the pointer after idetifying it
+    cnts,_ = cv2.findContours(Mask.copy(), cv2.RETR_EXTERNAL,
+    	cv2.CHAIN_APPROX_SIMPLE)
+    center = None
 
-            x = x + int(w / 2)
-            y = y + int(h / 2)
-            canvas = cv2.line(canvas, (x1, y1), (x, y), [255, 255, 255], 10)
+    # Ifthe contours are formed
+    if len(cnts) > 0:
+    	# sorting the contours to find biggest 
+        cnt = sorted(cnts, key = cv2.contourArea, reverse = True)[0]
+        # Get the radius of the enclosing circle around the found contour
+        ((x, y), radius) = cv2.minEnclosingCircle(cnt)
+        # Draw the circle around the contour
+        cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 255), 2)
+        # Calculating the center of the detected contour
+        M = cv2.moments(cnt)
+        center = (int(M['m10'] / M['m00']), int(M['m01'] / M['m00']))
 
-        # After the line is drawn the new points become the previous points.
-        x1, y1 = x, y
+        # Now checking if the user wants to click on any button above the screen 
+        if center[1] <= 65:
+            if 40 <= center[0] <= 140: # Clear Button
+                bpoints = [deque(maxlen=512)]
+                gpoints = [deque(maxlen=512)]
+                rpoints = [deque(maxlen=512)]
+                ypoints = [deque(maxlen=512)]
 
+                blue_index = 0
+                green_index = 0
+                red_index = 0
+                yellow_index = 0
+
+                paintWindow[67:,:,:] = 255
+            elif 160 <= center[0] <= 255:
+                    colorIndex = 0 # Blue
+            elif 275 <= center[0] <= 370:
+                    colorIndex = 1 # Green
+            elif 390 <= center[0] <= 485:
+                    colorIndex = 2 # Red
+            elif 505 <= center[0] <= 600:
+                    colorIndex = 3 # Yellow
+        else :
+            if colorIndex == 0:
+                bpoints[blue_index].appendleft(center)
+            elif colorIndex == 1:
+                gpoints[green_index].appendleft(center)
+            elif colorIndex == 2:
+                rpoints[red_index].appendleft(center)
+            elif colorIndex == 3:
+                ypoints[yellow_index].appendleft(center)
+    # Append the next deques when nothing is detected to avois messing up
     else:
+        bpoints.append(deque(maxlen=512))
+        blue_index += 1
+        gpoints.append(deque(maxlen=512))
+        green_index += 1
+        rpoints.append(deque(maxlen=512))
+        red_index += 1
+        ypoints.append(deque(maxlen=512))
+        yellow_index += 1
 
-        # If there were no contours detected then make x1,y1 = 0
-        x1, y1 = 0, 0
+    # Draw lines of all the colors on the canvas and frame 
+    points = [bpoints, gpoints, rpoints, ypoints]
+    for i in range(len(points)):
+        for j in range(len(points[i])):
+            for k in range(1, len(points[i][j])):
+                if points[i][j][k - 1] is None or points[i][j][k] is None:
+                    continue
+                cv2.line(frame, points[i][j][k - 1], points[i][j][k], colors[i], 2)
+                cv2.line(paintWindow, points[i][j][k - 1], points[i][j][k], colors[i], 2)
 
-    # To make it look as if the drawing is in the real actual frame.
-    frame = cv2.add(frame, canvas)
+    # Show all the windows
+    cv2.imshow("Tracking", frame)
+    cv2.imshow("Paint", paintWindow)
+    cv2.imshow("mask",Mask)
 
-    # stack the canvas and the frame
-    stacked = np.hstack((canvas, frame))
-
-    # Show this stacked frame at 40% of the size.
-    cv2.imshow('Frame', cv2.resize(stacked, None, fx=0.6, fy=0.6))
-
-    key = cv2.waitKey(1)
-
-    # To reset the canvas
-    if key == ord('q'):
-        canvas = np.zeros_like(frame)
-
-    # To quit press ESC
-    if key == 27:
+	# If the 'q' key is pressed then stop the application 
+    if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 
-# After the loop release the cap object
-vid.release()
-# Destroy all the windows
+# Release the camera and all resources
+cap.release()
 cv2.destroyAllWindows()
